@@ -1,0 +1,30 @@
+# VirtualFittingRoom Camera & Tracking Configuration
+
+camera:
+  device_id: 0
+  width: 640
+  height: 480
+  fps: 30
+  fourcc: "MJPG"
+  stale_threshold_s: 0.5
+  max_reconnect_attempts: 5
+  reconnect_delay_s: 1.0
+
+tracking:
+  enable_pose: true
+  enable_hands: true
+  enable_face: true
+  enable_smoothing: true
+  min_pose_confidence: 0.50
+  min_hand_confidence: 0.45
+  min_face_confidence: 0.45
+
+network:
+  host: "127.0.0.1"
+  port: 8766
+  connect_retry_s: 1.0
+  network_timeout_s: 0.5
+
+preview:
+  enabled: false
+  window_title: "VirtualFittingRoom Tracking Preview"

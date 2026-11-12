@@ -1,0 +1,90 @@
+import bpy
+import socket
+import json
+
+HOST = "127.0.0.1"
+PORT = 8766
+RIG_NAME = "Human.rig"
+
+# Stop an earlier receiver started by this script, if present.
+old = bpy.app.driver_namespace.get("VFR_POSE_RECEIVER")
+if old:
+    try:
+        old["server"].close()
+    except Exception:
+        pass
+    bpy.app.driver_namespace.pop("VFR_POSE_RECEIVER", None)
+
+rig = bpy.data.objects.get(RIG_NAME)
+human = bpy.data.objects.get("Human")
+
+if rig is None or rig.type != "ARMATURE":
+    raise RuntimeError("Human.rig armature not found")
+if human is None:
+    raise RuntimeError("Human mesh not found")
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind((HOST, PORT))
+server.listen(1)
+server.setblocking(False)
+
+state = {
+    "server": server,
+    "client": None,
+    "buffer": b"",
+    "last_points": None,
+}
+bpy.app.driver_namespace["VFR_POSE_RECEIVER"] = state
+
+def receive_pose():
+    s = bpy.app.driver_namespace.get("VFR_POSE_RECEIVER")
+    if s is None:
+        return None
+
+    if s["client"] is None:
+        try:
+            client, address = s["server"].accept()
+            client.setblocking(False)
+            s["client"] = client
+            print("[VFR] Sender connected:", address)
+        except BlockingIOError:
+            return 0.02
+
+    try:
+        data = s["client"].recv(65536)
+        if not data:
+            s["client"].close()
+            s["client"] = None
+            s["buffer"] = b""
+            print("[VFR] Sender disconnected")
+            return 0.1
+        s["buffer"] += data
+    except BlockingIOError:
+        pass
+    except OSError as exc:
+        print("[VFR] Socket:", exc)
+        try:
+            s["client"].close()
+        except Exception:
+            pass
+        s["client"] = None
+        s["buffer"] = b""
+        return 0.1
+
+    while b"\n" in s["buffer"]:
+        line, s["buffer"] = s["buffer"].split(b"\n", 1)
+        try:
+            packet = json.loads(line.decode("utf-8"))
+            points = packet.get("points", [])
+            if len(points) == 33:
+                s["last_points"] = points
+        except (ValueError, UnicodeDecodeError):
+            pass
+
+    return 0.02
+
+bpy.app.timers.register(receive_pose, first_interval=0.02)
+print("[VFR] Receiver listening on 127.0.0.1:8766")
+print("[VFR] Rig:", rig.name, "| Mesh:", human.name)
+print("[VFR] This step receives landmarks only; it does not animate bones yet.")

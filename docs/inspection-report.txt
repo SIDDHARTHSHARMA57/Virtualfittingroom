@@ -1,0 +1,162 @@
+VirtualFittingRoom Inspection Report
+Generated: 2026-10-16T17:11:05+05:30
+
+=== PATHS ===
+Workspace: /media/siddharth-sharam/Workspace
+Project:   /media/siddharth-sharam/Workspace/VirtualFittingRoom
+UE path:   /media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3
+
+=== STORAGE ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme0n1p2  262G  196G   54G  79% /media/siddharth-sharam/Workspace
+/dev/nvme0n1p7   72G   63G  6.0G  92% /
+
+=== OPERATING SYSTEM ===
+PRETTY_NAME="Ubuntu 26.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="26.04"
+VERSION="26.04.1 LTS (Resolute Raccoon)"
+VERSION_CODENAME=resolute
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=resolute
+LOGO=ubuntu-logo
+
+=== KERNEL ===
+Linux siddharth-sharam-Nitro-ANV15-51 7.0.0-38-generic #38-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep  4 09:10:14 UTC 2026 x86_64 GNU/Linux
+
+=== MEMORY ===
+               total        used        free      shared  buff/cache   available
+Mem:            14Gi       4.7Gi       6.4Gi       1.0Gi       4.4Gi       9.9Gi
+Swap:          4.0Gi          0B       4.0Gi
+
+=== NVIDIA GPU ===
+Fri Oct 16 17:11:05 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 595.99.02              Driver Version: 595.99.02      CUDA Version: 13.2     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4050 ...    Off |   00000000:01:00.0 Off |                  N/A |
+| N/A   45C    P8              5W /   45W |      12MiB /   6141MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            5207      G   /usr/bin/gnome-shell                      1MiB |
++-----------------------------------------------------------------------------------------+
+
+=== PYTHON ===
+Python 3.14.7
+/media/siddharth-sharam/Workspace/miniforge3/bin/python3
+Python 3.14.7
+/media/siddharth-sharam/Workspace/miniforge3/bin/python
+
+=== EXISTING PROJECT FILES ===
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/launch_ue5_project.sh
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/config.yaml
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/models/yolo11n-pose.pt
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/models/pose_landmarker_lite.task
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/yolov8n-pose.pt
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/README.md
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/unreal_project/import_avatar_ue5.py
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/unreal_project/VirtualFittingRoom.uproject
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/outputs/test_webcam_frame.jpg
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/src/tracker.py
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/src/visualizer.py
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/src/main_reconstruction.py
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/src/camera.py
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/src/main.py
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/docs/inspection-report.txt
+
+=== EXISTING PYTHON ENVIRONMENTS ===
+/media/siddharth-sharam/Workspace/VirtualFittingRoom/envs/stage1/conda-meta
+
+=== PYTORCH / CUDA IMPORT CHECK ===
+Python: 3.14.7 | packaged by conda-forge | (main, Sep  2 2026, 21:08:32) [GCC 15.3.0]
+PyTorch not usable in system Python: ModuleNotFoundError("No module named 'torch'")
+
+=== UNREAL ENGINE ===
+UE directory exists.
+Executable found: /media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Engine/Binaries/Linux/UnrealEditor
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Engine/Binaries/Linux/UnrealEditor: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=6e4bb1962944773dfd35e1e92831d9351d96f2e4, stripped
+Executable found: /media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Engine/Binaries/Linux/UnrealEditor-Cmd
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Engine/Binaries/Linux/UnrealEditor-Cmd: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=6e4bb1962944773dfd35e1e92831d9351d96f2e4, stripped
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_SIM_Blank/TP_SIM_Blank.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_TopDownBP/TP_TopDownBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_SIM_BlankBP/TP_SIM_BlankBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_FirstPerson/TP_FirstPerson.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_DMXBP/TP_DMXBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_ME_VProdBP/TP_ME_VprodBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_PhotoStudioBP/TP_PhotoStudioBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_BlankBP/TP_BlankBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_TopDown/TP_TopDown.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_MFG_CollabBP/TP_MFG_CollabBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_MFG_BlankBP/TP_MFG_BlankBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_MotionDesignBP/TP_MotionDesignBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_VehicleAdvBP/TP_VehicleAdvBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_ThirdPersonBP/TP_ThirdPersonBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_nDisplayBP/TP_nDisplayBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_HandheldARBP/TP_HandheldARBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_AEC_HandheldARBP/TP_AEC_HandheldARBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_MFG_HandheldARBP/TP_MFG_HandheldARBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_UEIntro_BP/UEIntro.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_ThirdPerson/TP_ThirdPerson.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_AEC_CollabBP/TP_AEC_CollabBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_AEC_ArchvisBP/TP_AEC_ArchvisBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_ME_BlankBP/TP_ME_BlankBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_InCamVFXBP/TP_InCamVFXBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_AEC_ProdConfigBP/TP_AEC_ProdConfigBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_ME_CineBP/TP_ME_CineBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_VehicleAdv/TP_VehicleAdv.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_VirtualRealityBP/TP_VirtualRealityBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_AEC_BlankBP/TP_AEC_BlankBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_MFG_ProdConfigBP/TP_MFG_ProdConfigBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_Blank/TP_Blank.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Templates/TP_FirstPersonBP/TP_FirstPersonBP.uproject
+/media/siddharth-sharam/Workspace/Unreal Engine/Linux_Unreal_Engine_5.8.3/Engine/Build/Build.version
+
+=== GIT ===
+git version 2.53.0
+
+=== PROJECT ROOT ===
+total 6744
+drwxrwxr-x 14 siddharth-sharam siddharth-sharam    4096 Oct 16 17:11 .
+drwxrwxrwx 24 siddharth-sharam siddharth-sharam    4096 Oct 16 10:51 ..
+-rw-rw-r--  1 siddharth-sharam siddharth-sharam    2659 Oct 16 11:34 README.md
+drwxrwxr-x  5 siddharth-sharam siddharth-sharam    4096 Oct 16 17:11 ai
+drwxrwxr-x  2 siddharth-sharam siddharth-sharam    4096 Oct 15 14:14 captures
+-rw-rw-r--  1 siddharth-sharam siddharth-sharam     683 Oct 16 11:34 config.yaml
+drwxrwxr-x  2 siddharth-sharam siddharth-sharam    4096 Oct 16 17:11 docs
+drwxrwxr-x  3 siddharth-sharam siddharth-sharam    4096 Oct 15 18:15 envs
+-rwxrwxr-x  1 siddharth-sharam siddharth-sharam     358 Oct 16 12:24 launch_ue5_project.sh
+drwxrwxr-x  2 siddharth-sharam siddharth-sharam    4096 Oct 15 14:14 logs
+drwxrwxr-x  3 siddharth-sharam siddharth-sharam    4096 Oct 16 12:21 models
+drwxrwxr-x  4 siddharth-sharam siddharth-sharam    4096 Oct 16 17:11 outputs
+drwxrwxr-x  2 siddharth-sharam siddharth-sharam    4096 Oct 16 17:11 scripts
+drwxrwxr-x  4 siddharth-sharam siddharth-sharam    4096 Oct 16 12:24 src
+drwxrwxr-x  2 siddharth-sharam siddharth-sharam    4096 Oct 16 17:11 tests
+drwxrwxr-x  2 siddharth-sharam siddharth-sharam    4096 Oct 16 17:11 unreal
+drwxrwxr-x  2 siddharth-sharam siddharth-sharam    4096 Oct 16 12:24 unreal_project
+-rw-rw-r--  1 siddharth-sharam siddharth-sharam 6832633 Oct 16 12:23 yolov8n-pose.pt
+
+=== OFFICIAL REPOSITORY REACHABILITY ===
+
+Repository: https://github.com/vchoutas/smplx.git
+1265df7ba545e8b00f72e7c557c766e15c71632f	HEAD
+
+Repository: https://github.com/vchoutas/smplify-x.git
+68f8536707f43f4736cdd75a19b18ede886a4d53	HEAD
+
+Repository: https://github.com/PerceivingSystems/smpl-unreal.git
+87cea30d6221c7a7a4a66749d1981a50fae88539	HEAD

@@ -1,0 +1,29 @@
+camera:
+  device_index: 0
+  width: 640
+  height: 480
+  target_fps: 30
+  buffer_size: 1
+
+pose_tracker:
+  backend: "yolo" # Options: "yolo", "mediapipe"
+  confidence_threshold: 0.5
+  device: "cuda:0" # Options: "cuda:0", "cpu"
+  yolo:
+    model_name: "models/yolo11n-pose.pt"
+    imgsz: 640
+  mediapipe:
+    model_path: "models/pose_landmarker_lite.task"
+    num_poses: 1
+    min_pose_detection_confidence: 0.5
+    min_pose_presence_confidence: 0.5
+    min_tracking_confidence: 0.5
+
+display:
+  window_name: "VirtualFittingRoom - Milestone 1 Live Pose Tracking"
+  show_fps: true
+  show_latency: true
+  show_bbox: true
+  show_landmarks: true
+  show_skeleton: true
+  mirror_display: true
