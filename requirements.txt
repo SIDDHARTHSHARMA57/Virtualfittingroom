@@ -3,7 +3,8 @@
 opencv-python
 numpy
 mediapipe
-ultralytics
+ultralytics          # YOLO11n person detection (models/yolo11n.pt)
+lap                  # needed by ultralytics' ByteTrack identity tracker
 pyyaml
 pillow
 trimesh

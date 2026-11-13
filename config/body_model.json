@@ -29,6 +29,9 @@
     "left_wrist":    {"order": "XYZ", "x": [-80, 80],  "y": [-35, 35],  "z": [-80, 70]}
   },
   "limit_weight": 50.0,
+  "finger_max_bend_deg": 110.0,
+  "reprojection_weight": 150.0,
+  "world_depth_weight": 0.5,
   "collision": {
     "enabled": true,
     "weight": 3000.0,

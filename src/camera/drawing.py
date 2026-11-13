@@ -164,6 +164,29 @@ def render_tracking_overlays(
 
     return out
 
+def render_person_selection(frame: np.ndarray, selection: Dict[str, Any]) -> np.ndarray:
+    """Operator/debug overlay: a box + temporary ID per detected person, the selected one
+    highlighted, and the selector state. (The mirror/Blender view never shows this.)"""
+    if not selection or not selection.get("enabled"):
+        return frame
+    out = frame
+    target = selection.get("target_id")
+    for tid, (x0, y0, x1, y1), conf in selection.get("people", []):
+        sel = tid == target
+        color = (80, 220, 80) if sel else (170, 170, 170)
+        cv2.rectangle(out, (int(x0), int(y0)), (int(x1), int(y1)), color, 3 if sel else 1)
+        label = f"ID {tid}" + ("  SELECTED" if sel else "  tap to select")
+        cv2.rectangle(out, (int(x0), int(y0) - 20), (int(x0) + 9 * len(label), int(y0)), color, -1)
+        cv2.putText(out, label, (int(x0) + 3, int(y0) - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (20, 20, 20), 1)
+    state = selection.get("state", "")
+    msg = selection.get("message", "")
+    banner = f"{state}" + (f" - {msg}" if msg else "")
+    good = state == "LOCKED"
+    cv2.rectangle(out, (0, 0), (out.shape[1], 24), (30, 90, 30) if good else (20, 90, 160), -1)
+    cv2.putText(out, banner, (8, 17), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    return out
+
+
 def render_3d_orthographic_view(
     vertices: np.ndarray,
     view_angle: str = "front",

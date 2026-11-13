@@ -19,6 +19,7 @@ from src.camera.smplx_fitter import SMPLXFittingEngine
 from src.camera.protocol import serialize_packet
 from src.camera.monitor import PerformanceMonitor
 from src.camera.frame_share import FrameWriter
+from src.camera.person_tracker import PersonDetector, PersonSelector, mask_person, LOCKED, IDLE
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,11 @@ class TrackingService:
         self._smplx_hands: int = 0
         self._smplx_params: Optional[Dict[str, list]] = None  # latest solved pose, streamed to Blender
         self.frame_writer: Optional[FrameWriter] = None
+        self.person_detector: Optional[PersonDetector] = None
+        self.selector: Optional[PersonSelector] = None
+        self.auto_select_single = True   # with exactly one person in view, select them automatically
+        self._latest_selection = None
+        self._last_target = None
         self.intrinsics: Optional[Dict[str, float]] = None
         self._fit_cv = threading.Condition()
         self._fit_input: Optional[Dict[str, Any]] = None
@@ -158,6 +164,20 @@ class TrackingService:
         self.intrinsics = load_intrinsics(self.width, self.height, mirrored=True)
         self.smplx_engine = SMPLXFittingEngine(model_dir=self.smplx_model_dir, intrinsics=self.intrinsics)
 
+        # Multi-person detection + single-person lock (falls back to MediaPipe-only tracking)
+        self.selector = PersonSelector(auto_select_single=self.auto_select_single)
+        yolo = os.path.join(self.smplx_model_dir, "yolo11n-seg.pt")  # silhouettes -> precise masking
+        if not os.path.isfile(yolo):
+            yolo = os.path.join(self.smplx_model_dir, "yolo11n.pt")       # boxes only
+        try:
+            self.person_detector = PersonDetector(yolo) if os.path.isfile(yolo) else None
+        except Exception as exc:  # ultralytics/lap missing
+            self.person_detector = None
+            logger.warning(f"Person detection disabled ({exc}); tracking the most prominent person")
+        if self.person_detector is None:
+            logger.warning("No models/yolo11n.pt: multi-person selection disabled")
+        self._last_target = None
+
         # Live camera frames for Blender's background (same capture; no second camera stream)
         try:
             self.frame_writer = FrameWriter()
@@ -194,8 +214,29 @@ class TrackingService:
             frame_age = now - frame_time
             mirrored = cv2.flip(frame, 1)
 
-            # 1. MediaPipe Inference
-            tracking_res = self.tracker.process(mirrored, timestamp=frame_time)
+            # 1. Who drives the twin? Detect + track everyone, run pose on the selected person only.
+            sel, pose_input = None, mirrored
+            if self.person_detector is not None:
+                people = self.person_detector.detect(mirrored, now)
+                sel = self.selector.update(people, now, mirrored)
+                if sel.state == LOCKED:
+                    if sel.target_id != self._last_target:  # different person: no smoothing/pose carry-over
+                        self.tracker.reset_person()
+                        if self.smplx_engine:
+                            self.smplx_engine.reset(keep_shape=False)  # new person, new body shape
+                        self._last_target = sel.target_id
+                    target = next(p for p in sel.people if p.track_id == sel.target_id)
+                    pose_input = mask_person(mirrored, target, sel.people)
+                else:
+                    pose_input = None  # nobody selected / target missing: hold the last pose
+                with self._lock:
+                    self._latest_selection = sel
+
+            # 2. MediaPipe Inference (selected person only)
+            if pose_input is not None:
+                tracking_res = self.tracker.process(pose_input, timestamp=frame_time)
+            else:
+                tracking_res = self.tracker.empty_result(frame_time)
 
             # 2. Anatomical Regions & Inferred Surface Points
             anatomy_res = self.anatomy_model.compute_anatomical_regions(
@@ -206,7 +247,7 @@ class TrackingService:
             )
 
             # 3. Hand the frame to the SMPL-X fit thread (latest-wins; never blocks inference)
-            if self.enable_smplx and self.smplx_engine and self.smplx_engine.enabled:
+            if pose_input is not None and self.enable_smplx and self.smplx_engine and self.smplx_engine.enabled:
                 with self._fit_cv:
                     self._fit_input = tracking_res
                     self._fit_cv.notify()
@@ -281,6 +322,7 @@ class TrackingService:
                 body_points=res.get("body_points"),
                 hands=res.get("hands"),
                 hands_world=res.get("hands_world"),
+                face_matrix=res.get("face_matrix"),
                 min_conf=0.35,
             )
             with self._lock:
@@ -352,7 +394,33 @@ class TrackingService:
         summary["smplx_is_live"] = is_live
         summary["smplx_valid_joints"] = valid_j
         summary["smplx_hands"] = self._smplx_hands
+        if self.smplx_engine is not None:  # overlay misalignment (px) + body-shape magnitude
+            summary["reproj_px"] = self.smplx_engine.last_reproj_px
+            summary["betas_norm"] = float(np.linalg.norm(self.smplx_engine.betas[0].cpu().numpy()))
+        sel = self._latest_selection
+        summary["selection"] = {
+            "enabled": self.person_detector is not None,
+            "state": sel.state if sel else IDLE,
+            "target_id": sel.target_id if sel else None,
+            "message": sel.message if sel else "",
+            "people": [(p.track_id, p.bbox, p.conf) for p in (sel.people if sel else [])],
+            "detect_ms": round(self.person_detector.last_ms, 1) if self.person_detector else 0.0,
+        }
         return frame, tracking, anatomy, verts, summary, self.status_message
+
+    # ---- person selection (dashboard / touchscreen) ----
+    def select_person_at(self, nx: float, ny: float):
+        """Tap at normalised (0..1) coords of the mirrored preview."""
+        if self.selector is not None:
+            self.selector.select_at(nx * self.width, ny * self.height)
+
+    def select_person(self, track_id: int):
+        if self.selector is not None:
+            self.selector.select(track_id)
+
+    def reset_selection(self):
+        if self.selector is not None:
+            self.selector.reset()
 
     def stop_service(self):
         self._running = False

@@ -275,7 +275,10 @@ class Correctives:
             cols = np.nonzero(np.abs(rows).max(axis=0) > 1e-5)[0]
             if len(cols):
                 self.hands.append((j, cols, np.ascontiguousarray(rows[:, cols])))
-        self.base = d["v_template"].astype(np.float32).ravel()
+        self.v_template = d["v_template"].astype(np.float64)
+        self.shapedirs = d["shapedirs"][:, :, :10].astype(np.float64)        # (V, 3, 10)
+        self.J_regressor = d["J_regressor"].astype(np.float64)
+        self.base = self.v_template.astype(np.float32).ravel()
         self.key = body.data.shape_keys.key_blocks["VFR_PoseCorrectives"]
         self._lock = threading.Lock()
         self._job = None      # latest rvecs waiting to be computed
@@ -325,6 +328,11 @@ class Correctives:
         self._alive = False
         self._wake.set()
 
+    def shaped(self, betas):
+        """Rest vertices and joints for SMPL-X shape coefficients."""
+        v = self.v_template + self.shapedirs @ np.asarray(betas, dtype=np.float64)
+        return v, self.J_regressor @ v
+
     @staticmethod
     def rotmats(rvecs: np.ndarray) -> np.ndarray:
         th = np.linalg.norm(rvecs, axis=1, keepdims=True)
@@ -339,6 +347,40 @@ class Correctives:
         """Synchronous version (tests / one-off)."""
         self.key.data.foreach_set("co", self.base + self.offsets(rvecs_54))
         self.key.id_data.update_tag()
+
+
+def apply_shape(arm, body, betas, corr: "Correctives"):
+    """Reshape the twin to the estimated body: base mesh + shape-key basis, corrective base, and
+    bone rest positions (edit mode, briefly). Called only when the shape actually changes."""
+    v, J = corr.shaped(betas)
+    flat = v.astype(np.float32).ravel()
+    body.data.vertices.foreach_set("co", flat)
+    body.data.shape_keys.key_blocks["Basis"].data.foreach_set("co", flat)
+    corr.base = flat
+    if corr._last is not None:   # recompute correctives on the new base for the current pose
+        last, corr._last = corr._last, None
+        corr.submit(last)
+    _set_object_mode()
+    prev_active = bpy.context.view_layer.objects.active
+    for o in bpy.context.view_layer.objects:
+        if o is not None:
+            o.select_set(False)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    try:
+        for i, name in enumerate(JOINT_NAMES):
+            eb = arm.data.edit_bones[name]
+            eb.head = J[i].tolist()
+            eb.tail = (J[i] + [0.0, 0.03, 0.0]).tolist()
+            eb.roll = 0.0
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")
+    arm.select_set(False)
+    bpy.context.view_layer.objects.active = prev_active
+    arm["vfr_betas"] = [float(x) for x in betas]
+    body.data.update()
+    _log(f"[VFR] Twin reshaped to betas {np.round(betas, 2).tolist()}")
 
 
 def _quat(rv) -> Quaternion:
@@ -545,6 +587,15 @@ def start():
                 s["last_error"] = str(exc)
         if latest is not None:
             rig = bpy.data.objects.get(s["rig"])
+            b = latest.get("betas")
+            if rig is not None and isinstance(b, list) and len(b) == 10 and all(math.isfinite(x) for x in b):
+                cur = np.array(rig.get("vfr_betas", [0.0] * 10), dtype=np.float64)
+                if np.abs(np.array(b) - cur).max() > 0.05:
+                    try:
+                        apply_shape(rig, bpy.data.objects[NAME], b, s["correctives"])
+                    except Exception as exc:
+                        s["last_error"] = f"reshape: {exc}"
+                        _log(f"[VFR] reshape failed: {exc}")
             if rig is not None and apply_pose(rig, latest, s["correctives"]):
                 s["applied"] += 1
                 s["penetrations"] = latest.get("penetrations", {})

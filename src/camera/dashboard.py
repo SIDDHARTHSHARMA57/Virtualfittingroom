@@ -29,7 +29,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from src.camera.service import TrackingService
-from src.camera.drawing import render_tracking_overlays, render_3d_orthographic_view
+from src.camera.drawing import render_tracking_overlays, render_3d_orthographic_view, render_person_selection
 
 logger = logging.getLogger("VFR-Dashboard")
 
@@ -214,6 +214,25 @@ class CameraDashboardApp:
                                   font=("Helvetica", 10, "bold"), command=self.action_open_twin)
         self.btn_twin.pack(fill=tk.X, padx=10, pady=(0, 4))
 
+        # Person selection: tap a person in the camera preview, or pick an ID here
+        c_sel = tk.LabelFrame(sidebar, text=" Person Selection ", font=("Helvetica", 10, "bold"),
+                              fg="#abb2bf", bg="#25252c", bd=2)
+        c_sel.pack(fill=tk.X, padx=8, pady=4)
+        self.var_sel_state = tk.StringVar(value="IDLE")
+        tk.Label(c_sel, textvariable=self.var_sel_state, fg="#e5c07b", bg="#25252c", anchor="w",
+                 wraplength=290, justify=tk.LEFT).pack(fill=tk.X, padx=4)
+        row = tk.Frame(c_sel, bg="#25252c")
+        row.pack(fill=tk.X, padx=4, pady=3)
+        self.var_sel_id = tk.StringVar(value="")
+        self.cmb_person = ttk.Combobox(row, textvariable=self.var_sel_id, values=[], width=8, state="readonly")
+        self.cmb_person.pack(side=tk.LEFT)
+        tk.Button(row, text="Select", command=self.action_select_person, bg="#98c379", fg="#1e1e24",
+                  font=("Helvetica", 9, "bold")).pack(side=tk.LEFT, padx=4)
+        tk.Button(row, text="Reset", command=self.action_reset_selection, bg="#e06c75", fg="#1e1e24",
+                  font=("Helvetica", 9, "bold")).pack(side=tk.LEFT)
+        self.cam_canvas.bind("<Button-1>", self._on_preview_click)
+        self._preview_geom = None
+
         # 3. Anatomical & Regional Overlays
         c_vis = tk.LabelFrame(sidebar, text=" Layers & Kinematic Toggles ", font=("Helvetica", 10, "bold"),
                               fg="#abb2bf", bg="#25252c", padx=10, pady=6)
@@ -341,6 +360,36 @@ class CameraDashboardApp:
         if self.service:
             self.service.stream_to_blender = True
 
+    # ---- person selection ----
+    def _on_preview_click(self, ev):
+        """Tap/click on the camera preview selects the person under the finger."""
+        if not (self.service and self._preview_geom):
+            return
+        ox, oy, nw, nh = self._preview_geom
+        nx, ny = (ev.x - ox) / nw, (ev.y - oy) / nh
+        if 0 <= nx <= 1 and 0 <= ny <= 1:
+            self.service.select_person_at(nx, ny)
+
+    def action_select_person(self):
+        if self.service and self.var_sel_id.get().startswith("ID "):
+            self.service.select_person(int(self.var_sel_id.get()[3:]))
+
+    def action_reset_selection(self):
+        if self.service:
+            self.service.reset_selection()
+
+    def _update_person_controls(self, sel: dict):
+        if not sel.get("enabled"):
+            self.var_sel_state.set("Person detection unavailable (needs ultralytics + models/yolo11n.pt)")
+            return
+        tgt = sel.get("target_id")
+        self.var_sel_state.set(f"{sel.get('state')}" + (f"  (ID {tgt})" if tgt is not None else "")
+                               + (f"\n{sel.get('message')}" if sel.get("message") else "")
+                               + f"\ndetector {sel.get('detect_ms', 0):.0f} ms, {len(sel.get('people', []))} people")
+        ids = [f"ID {p[0]}" for p in sel.get("people", [])]
+        if list(self.cmb_person.cget("values")) != ids:
+            self.cmb_person.configure(values=ids)
+
     def _ui_update_loop(self):
         try:
             if self.service and self.service._running:
@@ -359,7 +408,10 @@ class CameraDashboardApp:
 
                 is_live = stats.get("smplx_is_live", False)
                 valid_j = stats.get("smplx_valid_joints", 0)
-                self.stat_smplx_mode.set("LIVE MOTION" if is_live else "Rest Pose")
+                rp = stats.get("reproj_px", float("nan"))
+                shape = "custom shape" if stats.get("betas_norm", 0) > 0 else "template shape"
+                self.stat_smplx_mode.set(("LIVE" + (f" | overlay {rp:.0f}px" if rp == rp else "") + f" | {shape}")
+                                         if is_live else "Rest Pose")
                 self.stat_smplx_joints.set(f"{valid_j}/12 + {stats.get('smplx_hands', 0)} hands")
 
                 net = stats.get("network", {})
@@ -382,12 +434,18 @@ class CameraDashboardApp:
                         draw_anatomy=self.var_draw_anatomy.get(),
                         anatomical_data=anatomy
                     )
+                    sel = stats.get("selection", {})
+                    annotated = render_person_selection(annotated, sel)
+                    self._update_person_controls(sel)
 
                     vw = max(self.cam_frame.winfo_width(), 320)
                     vh = max(self.cam_frame.winfo_height(), 240)
                     fh, fw = annotated.shape[:2]
                     scale = min(vw / fw, vh / fh)
                     nw, nh = int(fw * scale), int(fh * scale)
+                    # where the (centred) image sits inside the label, for tap-to-select
+                    self._preview_geom = ((self.cam_canvas.winfo_width() - nw) / 2,
+                                          (self.cam_canvas.winfo_height() - nh) / 2, nw, nh)
 
                     resized = cv2.resize(annotated, (nw, nh), interpolation=cv2.INTER_LINEAR)
                     rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
