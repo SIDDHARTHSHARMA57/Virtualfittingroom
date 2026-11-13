@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp /e/VTON/dl_smplx/models/smplx/SMPLX_*.npz models/smplx/)",
+      "Bash(.venv/Scripts/python -I -)"
+    ]
+  }
+}

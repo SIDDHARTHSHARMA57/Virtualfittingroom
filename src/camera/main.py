@@ -8,7 +8,7 @@ import signal
 import logging
 import argparse
 
-PROJECT_ROOT = "/media/siddharth-sharam/Workspace/VirtualFittingRoom"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 

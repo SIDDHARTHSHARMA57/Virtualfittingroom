@@ -13,7 +13,10 @@ Features:
 """
 import os
 import sys
+import glob
 import time
+import shutil
+import subprocess
 import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -21,7 +24,7 @@ import cv2
 from PIL import Image, ImageTk
 import numpy as np
 
-PROJECT_ROOT = "/media/siddharth-sharam/Workspace/VirtualFittingRoom"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -35,11 +38,14 @@ class CameraDashboardApp:
         self.root = root
         self.root.title("VirtualFittingRoom — Dense Anatomical Body Tracking & SMPL-X Live Retargeting")
         self.root.geometry("1280x820")
-        self.root.minsize(1080, 680)
+        self.root.minsize(1000, 680)
         self.root.configure(bg="#1e1e24")
 
         # Models
-        self.pose_model = os.path.join(PROJECT_ROOT, "models/pose_landmarker_lite.task")
+        # full model: much better 3D (world) landmarks than lite; falls back if not downloaded
+        self.pose_model = os.path.join(PROJECT_ROOT, "models/pose_landmarker_full.task")
+        if not os.path.isfile(self.pose_model):
+            self.pose_model = os.path.join(PROJECT_ROOT, "models/pose_landmarker_lite.task")
         self.hand_model = os.path.join(PROJECT_ROOT, "models/hand_landmarker.task")
         self.face_model = os.path.join(PROJECT_ROOT, "models/face_landmarker.task")
         self.smplx_dir = os.path.join(PROJECT_ROOT, "models")
@@ -125,6 +131,7 @@ class CameraDashboardApp:
             bg="#121216"
         )
         self.cam_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+        self.cam_frame.pack_propagate(False)  # image size must not dictate frame size
 
         self.cam_canvas = tk.Label(self.cam_frame, bg="#121216")
         self.cam_canvas.pack(fill=tk.BOTH, expand=True)
@@ -138,7 +145,8 @@ class CameraDashboardApp:
             bg="#121216",
             width=350
         )
-        self.view3d_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(4, 0))
+        # before=cam_frame: fixed-width panels get their space first, camera takes the remainder
+        self.view3d_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(4, 0), before=self.cam_frame)
         self.view3d_frame.pack_propagate(False)
 
         # 3D View Angle Controls
@@ -163,7 +171,7 @@ class CameraDashboardApp:
 
         # Right Sidebar: Controls & Live Diagnostics
         sidebar = tk.Frame(main_container, bg="#25252c", width=330)
-        sidebar.pack(side=tk.RIGHT, fill=tk.Y, padx=(6, 0))
+        sidebar.pack(side=tk.RIGHT, fill=tk.Y, padx=(6, 0), before=viewport_container)
         sidebar.pack_propagate(False)
 
         # 1. Device & Mode Setup Card
@@ -201,6 +209,10 @@ class CameraDashboardApp:
         self.btn_recon = tk.Button(btn_frame, text="🔄 Reconnect", bg="#e5c07b", fg="#1e1e24",
                                    font=("Helvetica", 10, "bold"), width=9, command=self.action_reconnect)
         self.btn_recon.pack(side=tk.LEFT, padx=2)
+
+        self.btn_twin = tk.Button(sidebar, text="Open Digital Twin in Blender", bg="#61afef", fg="#1e1e24",
+                                  font=("Helvetica", 10, "bold"), command=self.action_open_twin)
+        self.btn_twin.pack(fill=tk.X, padx=10, pady=(0, 4))
 
         # 3. Anatomical & Regional Overlays
         c_vis = tk.LabelFrame(sidebar, text=" Layers & Kinematic Toggles ", font=("Helvetica", 10, "bold"),
@@ -303,6 +315,32 @@ class CameraDashboardApp:
         time.sleep(0.3)
         self.action_start()
 
+    @staticmethod
+    def _find_blender():
+        """BLENDER env var, PATH, the team's E:\\Apps\\Blender, then Program Files."""
+        cands = [os.environ.get("BLENDER"), shutil.which("blender"), r"E:\Apps\Blender\blender.exe"]
+        cands += sorted(glob.glob(os.path.join(os.environ.get("ProgramFiles", ""), "Blender Foundation",
+                                               "Blender*", "blender.exe")), reverse=True)
+        return next((c for c in cands if c and os.path.isfile(c)), None)
+
+    def action_open_twin(self):
+        """Launch Blender with the SMPL-X twin receiver; the running service streams the pose to it."""
+        proc = getattr(self, "_blender_proc", None)
+        if proc is not None and proc.poll() is None:
+            messagebox.showinfo("Digital Twin", "Blender is already running the digital twin.")
+            return
+        blender = self._find_blender()
+        if blender is None:
+            messagebox.showerror("Digital Twin", "Blender not found.\nSet the BLENDER environment variable "
+                                                 "to blender.exe, or add Blender to PATH.")
+            return
+        script = os.path.join(PROJECT_ROOT, "src", "blender_smplx_receiver.py")
+        env = dict(os.environ, VFR_ROOT=PROJECT_ROOT)
+        self._blender_proc = subprocess.Popen([blender, "--python", script], cwd=PROJECT_ROOT, env=env)
+        self.var_stream_blender.set(True)  # twin needs the pose stream
+        if self.service:
+            self.service.stream_to_blender = True
+
     def _ui_update_loop(self):
         try:
             if self.service and self.service._running:
@@ -322,7 +360,7 @@ class CameraDashboardApp:
                 is_live = stats.get("smplx_is_live", False)
                 valid_j = stats.get("smplx_valid_joints", 0)
                 self.stat_smplx_mode.set("LIVE MOTION" if is_live else "Rest Pose")
-                self.stat_smplx_joints.set(f"{valid_j}/12")
+                self.stat_smplx_joints.set(f"{valid_j}/12 + {stats.get('smplx_hands', 0)} hands")
 
                 net = stats.get("network", {})
                 if not self.var_stream_blender.get():

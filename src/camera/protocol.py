@@ -14,10 +14,15 @@ def serialize_packet(
     face_matrix: Optional[List[List[float]]] = None,
     blendshapes: Optional[Dict[str, float]] = None,
     timestamp: Optional[float] = None,
-    schema: int = 2
+    schema: int = 2,
+    smplx: Optional[Dict[str, List[float]]] = None,
 ) -> bytes:
     """
     Serializes tracking data into newline-delimited JSON payload expected by blender_pose_receiver.py.
+
+    `smplx` (optional, ignored by older receivers): solved SMPL-X parameters, axis-angle radians,
+    SMPL-X frame (+X body-left, +Y up, +Z forward), each rotation local to its parent joint:
+      global_orient[3], body_pose[63] (joints 1-21), left_hand_pose[45], right_hand_pose[45], betas[10]
     """
     packet = {
         "schema": schema,
@@ -29,6 +34,8 @@ def serialize_packet(
         "face_matrix": face_matrix,
         "blendshapes": blendshapes if blendshapes is not None else {},
     }
+    if smplx is not None:
+        packet["smplx"] = smplx
     encoded = json.dumps(packet, separators=(",", ":")) + "\n"
     return encoded.encode("utf-8")
 

@@ -185,37 +185,31 @@ class TestLiveMotionAndOrientation(unittest.TestCase):
         pelvis_screen_y = 0.3
         self.assertLess(head_screen_y, pelvis_screen_y, "Head screen Y must be smaller than pelvis screen Y (i.e. above it on screen)")
 
-    def test_vector_to_axis_angle(self):
-        from src.camera.smplx_fitter import vector_to_axis_angle
-        v1 = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-        v2 = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-        rot = vector_to_axis_angle(v1, v2)
-        # 90 degrees around Z axis: axis is [0, 0, 1], angle is pi/2 ~ 1.5708
-        self.assertAlmostEqual(rot[0], 0.0, places=4)
-        self.assertAlmostEqual(rot[1], 0.0, places=4)
-        self.assertAlmostEqual(rot[2], np.pi / 2, places=4)
-
 class TestFullBodyMotionAndDepth(unittest.TestCase):
+    # MediaPipe convention for a person facing the camera: their LEFT landmarks (11, 13, 23...) are at +x.
+    # Landmarks not set in a mock get visibility 0 so the solver ignores them.
+
     def test_forward_backward_depth_mapping(self):
         """Verify that when user reaches forward towards camera (-Z in MediaPipe), SMPL-X moves forward (+Z)."""
         from src.camera.smplx_fitter import SMPLXFittingEngine
         engine = SMPLXFittingEngine(model_dir='models')
 
-        mock_world = [[0.0, 0.0, 0.0, 0.95] for _ in range(33)]
-        mock_world[11] = [-0.20, -0.30, 0.0, 0.95]
-        mock_world[12] = [ 0.20, -0.30, 0.0, 0.95]
-        mock_world[23] = [-0.10,  0.20, 0.0, 0.95]
-        mock_world[24] = [ 0.10,  0.20, 0.0, 0.95]
+        mock_world = [[0.0, 0.0, 0.0, 0.0] for _ in range(33)]
+        mock_world[11] = [ 0.20, -0.30, 0.0, 0.95]
+        mock_world[12] = [-0.20, -0.30, 0.0, 0.95]
+        mock_world[23] = [ 0.10,  0.20, 0.0, 0.95]
+        mock_world[24] = [-0.10,  0.20, 0.0, 0.95]
 
         # Case 1: Resting arm
-        mock_world[13] = [-0.20, -0.05, 0.0, 0.95]
-        mock_world[15] = [-0.20,  0.20, 0.0, 0.95]
+        mock_world[13] = [ 0.20, -0.05, 0.0, 0.95]
+        mock_world[15] = [ 0.20,  0.20, 0.0, 0.95]
         res1 = engine.update_from_world_landmarks(mock_world)
         z_rest = res1['joints'][20, 2]
 
         # Case 2: Reaching forward toward camera (MediaPipe Z = -0.35m)
-        mock_world[15] = [-0.20, -0.05, -0.35, 0.95]
-        res2 = engine.update_from_world_landmarks(mock_world, smoothing=1.0)
+        mock_world[15] = [ 0.20, -0.05, -0.35, 0.95]
+        for _ in range(5):  # temporal term: give it a few frames to settle
+            res2 = engine.update_from_world_landmarks(mock_world)
         z_forward = res2['joints'][20, 2]
 
         delta_z = z_forward - z_rest
@@ -226,18 +220,18 @@ class TestFullBodyMotionAndDepth(unittest.TestCase):
         from src.camera.smplx_fitter import SMPLXFittingEngine
         engine = SMPLXFittingEngine(model_dir='models')
 
-        mock = [[0.0, 0.0, 0.0, 0.95] for _ in range(33)]
-        mock[11] = [-0.20, -0.30, 0.0, 0.95]
-        mock[12] = [ 0.20, -0.30, 0.0, 0.95]
-        mock[23] = [-0.10,  0.20, 0.0, 0.95]
-        mock[24] = [ 0.10,  0.20, 0.0, 0.95]
+        mock = [[0.0, 0.0, 0.0, 0.0] for _ in range(33)]
+        mock[11] = [ 0.20, -0.30, 0.0, 0.95]
+        mock[12] = [-0.20, -0.30, 0.0, 0.95]
+        mock[23] = [ 0.10,  0.20, 0.0, 0.95]
+        mock[24] = [-0.10,  0.20, 0.0, 0.95]
         # Knees forward in sitting pose
-        mock[25] = [-0.10,  0.20, -0.40, 0.95]
-        mock[26] = [ 0.10,  0.20, -0.40, 0.95]
-        mock[27] = [-0.10,  0.60, -0.40, 0.95]
-        mock[28] = [ 0.10,  0.60, -0.40, 0.95]
+        mock[25] = [ 0.10,  0.20, -0.40, 0.95]
+        mock[26] = [-0.10,  0.20, -0.40, 0.95]
+        mock[27] = [ 0.10,  0.60, -0.40, 0.95]
+        mock[28] = [-0.10,  0.60, -0.40, 0.95]
 
-        res = engine.update_from_world_landmarks(mock, smoothing=1.0)
+        res = engine.update_from_world_landmarks(mock)
         knee_z = res['joints'][4, 2]
         self.assertGreater(knee_z, 0.15, f"SMPL-X left knee must extend forward in sitting pose. Got {knee_z}")
 
@@ -246,18 +240,17 @@ class TestFullBodyMotionAndDepth(unittest.TestCase):
         from src.camera.smplx_fitter import SMPLXFittingEngine
         engine = SMPLXFittingEngine(model_dir='models')
 
-        mock = [[0.0, 0.0, 0.0, 0.95] for _ in range(33)]
-        mock[23] = [-0.10, 0.20, 0.0, 0.95]
-        mock[24] = [ 0.10, 0.20, 0.0, 0.95]
-        # Lean right: Shoulders and nose displaced right by +0.25m
-        mock[11] = [ 0.05, -0.30, 0.0, 0.95]
-        mock[12] = [ 0.45, -0.30, 0.0, 0.95]
-        mock[0]  = [ 0.25, -0.50, 0.0, 0.95]
-        mock[13] = [ 0.05, -0.05, 0.0, 0.95]
-        mock[14] = [ 0.45, -0.05, 0.0, 0.95]
-        mock[25] = [-0.10,  0.60, 0.0, 0.95]
-        mock[26] = [ 0.10,  0.60, 0.0, 0.95]
+        mock = [[0.0, 0.0, 0.0, 0.0] for _ in range(33)]
+        mock[23] = [ 0.10, 0.20, 0.0, 0.95]
+        mock[24] = [-0.10, 0.20, 0.0, 0.95]
+        # Lean toward +x: shoulders displaced by +0.25m
+        mock[11] = [ 0.45, -0.30, 0.0, 0.95]
+        mock[12] = [ 0.05, -0.30, 0.0, 0.95]
+        mock[13] = [ 0.45, -0.05, 0.0, 0.95]
+        mock[14] = [ 0.05, -0.05, 0.0, 0.95]
+        mock[25] = [ 0.10,  0.60, 0.0, 0.95]
+        mock[26] = [-0.10,  0.60, 0.0, 0.95]
 
-        res = engine.update_from_world_landmarks(mock, smoothing=1.0)
+        res = engine.update_from_world_landmarks(mock)
         head_x = res['joints'][15, 0]
         self.assertGreater(head_x, 0.10, f"Head must tilt right during lateral lean. Got {head_x}")

@@ -8,7 +8,7 @@ camera:
 pose_tracker:
   backend: "yolo" # Options: "yolo", "mediapipe"
   confidence_threshold: 0.5
-  device: "cuda:0" # Options: "cuda:0", "cpu"
+  device: "cpu" # Options: "cuda:0", "cpu"
   yolo:
     model_name: "models/yolo11n-pose.pt"
     imgsz: 640
