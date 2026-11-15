@@ -35,7 +35,7 @@ HOST = os.environ.get("VFR_BIND", "127.0.0.1")
 PORT = int(os.environ.get("VFR_PORT", "8766"))
 KEY = "VFR_SMPLX_RECEIVER"
 NAME = "SMPLX_Twin"
-VERSION = 2            # bump when the scene layout changes; older twins are rebuilt
+VERSION = 3            # bump when the scene layout changes; older twins are rebuilt
 BG_DISTANCE = 12.0     # m behind the camera's near plane; must be farther than the person
 DEFAULT_TRANSL = (0.0, 0.0, 2.5)   # camera frame (x right, y down, z forward) until tracking says otherwise
 
@@ -224,7 +224,10 @@ def _build_twin(scene):
     body.modifiers.new("Armature", "ARMATURE").object = arm
 
     # SMPL-X pose correctives as a shape key (evaluated before the armature, like SMPL-X itself)
+    # Basis stays the TEMPLATE body; the customer's shape is its own key, so garments can be bound
+    # against the template (mute VFR_BodyShape) and then follow the personalised body.
     body.shape_key_add(name="Basis", from_mix=False)
+    body.shape_key_add(name="VFR_BodyShape", from_mix=False).value = 1.0
     sk = body.shape_key_add(name="VFR_PoseCorrectives", from_mix=False)
     sk.value = 1.0
 
@@ -353,13 +356,9 @@ def apply_shape(arm, body, betas, corr: "Correctives"):
     """Reshape the twin to the estimated body: base mesh + shape-key basis, corrective base, and
     bone rest positions (edit mode, briefly). Called only when the shape actually changes."""
     v, J = corr.shaped(betas)
-    flat = v.astype(np.float32).ravel()
-    body.data.vertices.foreach_set("co", flat)
-    body.data.shape_keys.key_blocks["Basis"].data.foreach_set("co", flat)
-    corr.base = flat
-    if corr._last is not None:   # recompute correctives on the new base for the current pose
-        last, corr._last = corr._last, None
-        corr.submit(last)
+    # relative shape key on the template Basis (pose correctives stay relative to the template too:
+    # SMPL-X pose blend shapes do not depend on the shape)
+    body.data.shape_keys.key_blocks["VFR_BodyShape"].data.foreach_set("co", v.astype(np.float32).ravel())
     _set_object_mode()
     prev_active = bpy.context.view_layer.objects.active
     for o in bpy.context.view_layer.objects:
@@ -537,6 +536,12 @@ def start():
              "correctives": Correctives(bpy.data.objects[NAME]), "feed": CameraFeed(),
              "tick_ms": 0.0, "penetrations": {}}
     bpy.app.driver_namespace[KEY] = state
+    try:  # clothing library + garment simulation + Mirror Mode (3D View sidebar > VTryOn)
+        from src.garments import blender_wardrobe
+        state["wardrobe"] = blender_wardrobe.register(JOINT_NAMES)
+    except Exception as exc:
+        state["wardrobe"] = None
+        _log(f"[VFR] Wardrobe unavailable: {exc}")
 
     def tick():
         s = bpy.app.driver_namespace.get(KEY)
@@ -605,6 +610,11 @@ def start():
                 changed = True
         if s["correctives"].flush():
             changed = True
+        if s.get("wardrobe") is not None:
+            try:
+                changed |= s["wardrobe"].tick()
+            except Exception as exc:  # a garment problem must never stop body tracking
+                s["last_error"] = f"wardrobe: {exc}"
         if changed:
             _redraw()
         s["tick_ms"] = 0.9 * s["tick_ms"] + 0.1 * (time.perf_counter() - t0) * 1000

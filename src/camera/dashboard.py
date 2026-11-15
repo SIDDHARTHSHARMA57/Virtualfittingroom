@@ -29,7 +29,9 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from src.camera.service import TrackingService
-from src.camera.drawing import render_tracking_overlays, render_3d_orthographic_view, render_person_selection
+from typing import Optional
+from src.camera.drawing import (render_tracking_overlays, render_3d_orthographic_view, render_person_selection,
+                                render_body_calibration)
 
 logger = logging.getLogger("VFR-Dashboard")
 
@@ -230,6 +232,8 @@ class CameraDashboardApp:
                   font=("Helvetica", 9, "bold")).pack(side=tk.LEFT, padx=4)
         tk.Button(row, text="Reset", command=self.action_reset_selection, bg="#e06c75", fg="#1e1e24",
                   font=("Helvetica", 9, "bold")).pack(side=tk.LEFT)
+        tk.Button(row, text="Recalibrate", command=self.action_recalibrate, bg="#61afef", fg="#1e1e24",
+                  font=("Helvetica", 9, "bold")).pack(side=tk.LEFT, padx=4)
         self.cam_canvas.bind("<Button-1>", self._on_preview_click)
         self._preview_geom = None
 
@@ -378,14 +382,20 @@ class CameraDashboardApp:
         if self.service:
             self.service.reset_selection()
 
-    def _update_person_controls(self, sel: dict):
+    def action_recalibrate(self):
+        if self.service:
+            self.service.recalibrate_body()
+
+    def _update_person_controls(self, sel: dict, cal: Optional[dict] = None):
         if not sel.get("enabled"):
             self.var_sel_state.set("Person detection unavailable (needs ultralytics + models/yolo11n.pt)")
             return
         tgt = sel.get("target_id")
+        cal = cal or {}
         self.var_sel_state.set(f"{sel.get('state')}" + (f"  (ID {tgt})" if tgt is not None else "")
                                + (f"\n{sel.get('message')}" if sel.get("message") else "")
-                               + f"\ndetector {sel.get('detect_ms', 0):.0f} ms, {len(sel.get('people', []))} people")
+                               + f"\ndetector {sel.get('detect_ms', 0):.0f} ms, {len(sel.get('people', []))} people"
+                               + (f"\nBody: {cal.get('state')} - {cal.get('message')}" if cal else ""))
         ids = [f"ID {p[0]}" for p in sel.get("people", [])]
         if list(self.cmb_person.cget("values")) != ids:
             self.cmb_person.configure(values=ids)
@@ -436,7 +446,9 @@ class CameraDashboardApp:
                     )
                     sel = stats.get("selection", {})
                     annotated = render_person_selection(annotated, sel)
-                    self._update_person_controls(sel)
+                    annotated = render_body_calibration(annotated, stats.get("calibration", {}),
+                                                        stats.get("measurements", []))
+                    self._update_person_controls(sel, stats.get("calibration"))
 
                     vw = max(self.cam_frame.winfo_width(), 320)
                     vh = max(self.cam_frame.winfo_height(), 240)

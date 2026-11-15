@@ -32,6 +32,18 @@
   "finger_max_bend_deg": 110.0,
   "reprojection_weight": 150.0,
   "world_depth_weight": 0.5,
+  "estimate_body_shape": true,
+  "body_shape": {
+    "_doc": "Guided calibration after selection, then gated refinement. See src/camera/body_shape.py.",
+    "frames_needed": 25,
+    "refine_every": 60,
+    "refine_min_change_cm": 1.5,
+    "require_legs": false,
+    "clothing_allowance_m": 0.02,
+    "max_facing_deg": 25.0,
+    "max_tilt_deg": 12.0,
+    "min_arm_angle_deg": 20.0
+  },
   "collision": {
     "enabled": true,
     "weight": 3000.0,

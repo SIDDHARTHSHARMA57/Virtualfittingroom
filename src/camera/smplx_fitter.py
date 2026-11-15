@@ -24,7 +24,8 @@ from smplx.lbs import batch_rodrigues
 from src.camera.body_model import (load_config as load_body_config, joint_limits, clamp_body_pose,
                                    TorchLimits)
 from src.camera.body_collision import BodyCollision, needed_joints as collision_joints
-from src.camera.body_shape import ShapeEstimator
+from src.camera.body_shape import ShapeEstimator, BodyCalibration, WIDTH_BANDS, IDLE as CAL_IDLE, \
+    WAITING as CAL_WAITING, CAPTURING as CAL_CAPTURING, CALIBRATED as CAL_DONE
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,8 @@ class SMPLXFittingEngine:
         self.last_penetrations: Dict[str, float] = {}
         self.last_face_agreement_deg = float("nan")
         self.auto_shape = bool(self.body_cfg.get("estimate_body_shape", True))
-        self._shape_frames = 0
+        self.betas_target: Optional[np.ndarray] = None
+        self._report_cache: Optional[List[dict]] = None
         self.last_reproj_px = float("nan")
         self.head_source = "pose"
         self.last_clamped: List[str] = []
@@ -223,7 +225,9 @@ class SMPLXFittingEngine:
             self.num_vertices = self.layer.v_template.shape[0]
             self.shape_est = ShapeEstimator(self.layer.J_regressor.cpu().numpy(),
                                             self.layer.v_template.cpu().numpy(),
-                                            self.layer.shapedirs.cpu().numpy())
+                                            self.layer.shapedirs.cpu().numpy(),
+                                            self.layer.lbs_weights.cpu().numpy())
+            self.calib = BodyCalibration(self.body_cfg.get("body_shape", {}))
             self._init_kinematics()
             with torch.no_grad():
                 out = self.layer(betas=self.betas)
@@ -577,11 +581,13 @@ class SMPLXFittingEngine:
         hands: Optional[Dict[str, list]] = None,
         hands_world: Optional[Dict[str, list]] = None,
         face_matrix: Optional[list] = None,
+        silhouette: Optional[np.ndarray] = None,
     ) -> Dict[str, Any]:
         """world_points: 33 MediaPipe pose world landmarks [x,y,z,vis].
         hands / hands_world: hand detector output (image coords / metric) keyed by category;
         body_points (image coords) assign hands to sides, gate off-image landmarks, and place the body.
-        face_matrix: face landmarker's 4x4 facial transformation (head orientation)."""
+        face_matrix: face landmarker's 4x4 facial transformation (head orientation).
+        silhouette: the selected person's outline polygon (px) for body-width calibration."""
         stale = {"fitted": False, "vertices": self.last_vertices, "latency_ms": 0.0,
                  "valid_joints": 0, "is_live_fitted": self.is_live_fitted}
         if not self.enabled or not world_points or len(world_points) < 33:
@@ -596,7 +602,7 @@ class SMPLXFittingEngine:
             return stale
 
         kp, kc = self._observed(world_points, min_conf, conf)
-        self._update_shape(world_points, conf)
+        self._step_shape()  # layer A (shape) changes only here, rate-limited; the pose solve below is layer B
 
         sides = {}
         if hands and hands_world:
@@ -635,6 +641,7 @@ class SMPLXFittingEngine:
             uv = np.stack([K["fx"] * Pc[:, 0] / Pc[:, 2] + K["cx"], K["fy"] * Pc[:, 1] / Pc[:, 2] + K["cy"]], 1)
             m = uv_w > 0
             self.last_reproj_px = float(np.linalg.norm(uv[m] - uv_obs[m], axis=1).mean())
+        self._calibration_step(world_points, conf, body_points, silhouette)  # needs the fitted pose + position
 
         with torch.no_grad():
             out = self.layer(betas=self.betas, global_orient=self.global_orient, body_pose=self.body_pose,
@@ -666,23 +673,118 @@ class SMPLXFittingEngine:
             "clamped_joints": list(self.last_clamped),
             "head_source": self.head_source,
             "reproj_px": self.last_reproj_px,
+            "calibration": {"state": self.calib.state, "message": self.calib.message,
+                            "good": self.calib.good, "needed": self.calib.frames_needed},
             "betas": self.betas[0].cpu().numpy().copy(),
             "loss": loss,
         }
 
-    SHAPE_EVERY = 30        # frames between shape re-estimates
-    SHAPE_MIN_CHANGE = 0.1  # betas L2 change needed to reshape (avoids re-rigging on noise)
+    # ---------------- body shape (layer A; pose is layer B) ----------------
+    SHAPE_MAX_STEP = 0.15   # max change per beta per frame: shape morphs over ~1 s, no visible jump
 
-    def _update_shape(self, world_points, conf):
+    def _calibration_step(self, world_points, conf, body_points, silhouette):
+        """Feed one tracked frame of the SELECTED person to the shape calibration (the service only
+        calls the fitter for the locked person, so other people never contribute)."""
         if not self.auto_shape:
             return
-        self.shape_est.add(world_points, conf)
-        self._shape_frames += 1
-        if self._shape_frames % self.SHAPE_EVERY:
+        cal, est = self.calib, self.shape_est
+        if cal.state == CAL_IDLE:
+            cal.restart()
+        P = np.array([p[:3] for p in world_points], dtype=np.float64)
+        img = None
+        if body_points and len(body_points) == len(world_points) and self.intrinsics:
+            img = np.array([p[:2] for p in body_points], dtype=np.float64) * [self.intrinsics["w"], self.intrinsics["h"]]
+        neutral, why, legs = cal.check_pose(P, conf, img)
+
+        if cal.state in (CAL_WAITING, CAL_CAPTURING):
+            if not neutral:
+                cal.message = why + (f"  ({cal.good}/{cal.frames_needed})" if cal.good else "")
+                return
+            cal.state = CAL_CAPTURING
+            est.add_lengths(P, conf, legs=legs)
+            self._add_widths(silhouette, img)
+            cal.good += 1
+            cal.legs_seen |= legs
+            cal.message = f"Hold still - measuring {cal.good}/{cal.frames_needed}"
+            if cal.good >= cal.frames_needed:
+                b = est.estimate(self.betas[0].cpu().numpy(), cal.clothing)
+                if b is not None:
+                    self.betas_target = b
+                    self._report_cache = est.report(b, cal.clothing)
+                    cal.state = CAL_DONE
+                    cal.message = "Body calibrated" + ("" if cal.legs_seen else " (upper body only - legs not visible)")
             return
-        b = self.shape_est.estimate(self.betas[0].cpu().numpy())
-        if b is not None and np.linalg.norm(b - self.betas[0].cpu().numpy()) > self.SHAPE_MIN_CHANGE:
-            self.set_betas(b)
+
+        # CALIBRATED: slow, gated refinement (segments pointing at the camera are skipped in add_lengths)
+        est.add_lengths(P, conf, legs=True)
+        if neutral:
+            self._add_widths(silhouette, img)
+        cal.since_refine += 1
+        if cal.since_refine >= cal.refine_every:
+            cal.since_refine = 0
+            b = est.estimate(self.betas_target if self.betas_target is not None else self.betas[0].cpu().numpy(),
+                             cal.clothing)
+            cur = self.betas_target if self.betas_target is not None else self.betas[0].cpu().numpy()
+            if b is not None and est.max_change_cm(cur, b) > cal.refine_min_change_cm:
+                self.betas_target = b
+                self._report_cache = est.report(b, cal.clothing)
+                cal.message = "Body shape refined"
+
+    def _add_widths(self, silhouette, img):
+        """Front-view silhouette width at chest / waist / hips, as a ratio to the image shoulder width
+        (scale-free). Band rows come from the fitted model projected into the image."""
+        if silhouette is None or img is None or self.intrinsics is None or not self._transl_valid:
+            return
+        import cv2
+        K = self.intrinsics
+        w, h = int(K["w"]), int(K["h"])
+        mask = np.zeros((h, w), np.uint8)
+        cv2.fillPoly(mask, [np.asarray(silhouette, np.int32)], 1)
+        sh_px = float(np.linalg.norm(img[11] - img[12]))
+        if sh_px < 10:
+            return
+        with torch.no_grad():
+            _, R, Pj = self._fk_keypoints(self.global_orient, self.body_pose, return_rot=True)
+        R, Pj = R.cpu().numpy(), Pj.cpu().numpy()
+        up = R[self._pos_of[0]][:, 1]
+        for band, (anchor, dy, _) in WIDTH_BANDS.items():
+            p = Pj[[self._pos_of[j] for j in anchor]].mean(0) + dy * up
+            Pc = p * [1.0, -1.0, -1.0] + self.transl
+            u = int(round(K["fx"] * Pc[0] / Pc[2] + K["cx"]))
+            v = int(round(K["fy"] * Pc[1] / Pc[2] + K["cy"]))
+            if not (0 <= v < h and 0 <= u < w) or not mask[v, u]:
+                continue
+            row = mask[v]
+            l = u
+            while l > 0 and row[l - 1]:
+                l -= 1
+            r = u
+            while r < w - 1 and row[r + 1]:
+                r += 1
+            if l == 0 or r == w - 1:
+                continue  # cut by the image border: not a full width
+            ratio = (r - l + 1) / sh_px
+            if 0.4 < ratio < 2.5:
+                self.shape_est.add_width_ratio(band, ratio)
+
+    def _step_shape(self):
+        """Move the live body shape towards the calibrated target, rate-limited."""
+        if self.betas_target is None:
+            return
+        cur = self.betas[0].cpu().numpy()
+        step = np.clip(self.betas_target - cur, -self.SHAPE_MAX_STEP, self.SHAPE_MAX_STEP)
+        if np.abs(step).max() > 1e-3:
+            self.set_betas(cur + step)
+
+    def recalibrate(self):
+        """Operator: measure the current person again from scratch (keeps the current shape until done)."""
+        self.shape_est.clear()
+        self.calib.restart()
+
+    def measurements(self) -> List[dict]:
+        """Measurement report of the calibrated body. Computed on the fit thread whenever the shape
+        target changes; safe to read from the UI thread."""
+        return self._report_cache or []
 
     def set_betas(self, betas):
         """Reshape the body (rest joints, skin points, collision radii follow)."""
@@ -691,9 +793,12 @@ class SMPLXFittingEngine:
 
     def reset(self, keep_shape: bool = True):
         """Call when the person leaves/re-enters so the next fit starts cold. keep_shape=False for
-        a different person (forget the estimated body shape)."""
+        a different person: forget their measurements and shape, start a new calibration."""
         if not keep_shape:
-            self.shape_est.samples = {k: type(v)(maxlen=v.maxlen) for k, v in self.shape_est.samples.items()}
+            self.shape_est.clear()
+            self.calib.restart()
+            self.betas_target = None
+            self._report_cache = None
             if float(self.betas.abs().sum()) > 0:
                 self.set_betas(np.zeros(self.betas.shape[1], np.float32))
         self.body_pose.zero_()

@@ -235,6 +235,8 @@ class TrackingService:
             # 2. MediaPipe Inference (selected person only)
             if pose_input is not None:
                 tracking_res = self.tracker.process(pose_input, timestamp=frame_time)
+                if sel is not None:  # selected person's outline -> body-width calibration
+                    tracking_res["silhouette"] = target.polygon
             else:
                 tracking_res = self.tracker.empty_result(frame_time)
 
@@ -323,6 +325,7 @@ class TrackingService:
                 hands=res.get("hands"),
                 hands_world=res.get("hands_world"),
                 face_matrix=res.get("face_matrix"),
+                silhouette=res.get("silhouette"),
                 min_conf=0.35,
             )
             with self._lock:
@@ -397,6 +400,10 @@ class TrackingService:
         if self.smplx_engine is not None:  # overlay misalignment (px) + body-shape magnitude
             summary["reproj_px"] = self.smplx_engine.last_reproj_px
             summary["betas_norm"] = float(np.linalg.norm(self.smplx_engine.betas[0].cpu().numpy()))
+            cal = self.smplx_engine.calib
+            summary["calibration"] = {"state": cal.state, "message": cal.message,
+                                      "good": cal.good, "needed": cal.frames_needed}
+            summary["measurements"] = self.smplx_engine.measurements() if cal.state == "CALIBRATED" else []
         sel = self._latest_selection
         summary["selection"] = {
             "enabled": self.person_detector is not None,
@@ -421,6 +428,11 @@ class TrackingService:
     def reset_selection(self):
         if self.selector is not None:
             self.selector.reset()
+
+    def recalibrate_body(self):
+        """Measure the selected person's body again (e.g. after they removed a coat)."""
+        if self.smplx_engine is not None:
+            self.smplx_engine.recalibrate()
 
     def stop_service(self):
         self._running = False

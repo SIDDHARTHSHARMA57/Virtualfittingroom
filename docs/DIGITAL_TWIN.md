@@ -132,6 +132,45 @@ back to the previous MediaPipe-only person lock. `tests/test_person_selector.py`
 | Bystander hand inside target box (masking) | masked; target torso kept |
 | Blender twin with non-template shape | 0.13 mm vs SMPL-X |
 
+## Body-shape calibration (personalised body)
+
+Shape (layer A: SMPL-X betas) and pose (layer B: joint rotations) are separate parameters; the pose
+solve never changes the betas. Module: `src/camera/body_shape.py`, settings: `body_shape` in
+`config/body_model.json`. Only the selected person is measured (MediaPipe only sees their silhouette);
+measurements stop while they are lost; a newly selected person starts a fresh calibration and the
+previous person's samples and shape are discarded.
+
+1. **Guided calibration** (starts on selection; dashboard "Recalibrate" restarts it). Each frame is
+   checked for a neutral pose: facing the camera (< 25 deg), upright (< 12 deg), arms >= 20 deg away from
+   the torso side and below the shoulders, legs straight if visible. The failed check is shown as the
+   instruction ("Turn to face the camera", "Move your arms slightly away from your body", ...). After 25
+   good frames the shape is solved once (median per measurement).
+2. **Evidence**: 11 segment lengths (limbs, shoulders, torso, shoulders->head) from MediaPipe world
+   landmarks; front waist and hip widths from the segmentation outline, as a ratio to the image shoulder
+   width (camera distance cancels), minus a 2 cm clothing allowance. Chest width is NOT measured from the
+   outline: the upper arm touches the torso below the armpit in any comfortable pose (+3 cm bias in tests).
+3. **Refinement**: lengths keep accumulating from any frame (segments pointing at the camera rejected),
+   widths only from neutral-pose frames; every 60 frames the shape is re-solved and applied only if some
+   measurement changes by > 1.5 cm. Shape changes are rate-limited (0.15 per beta per frame), so the
+   body morphs over ~1 s; Blender reshapes in place (~15 ms per step). Collision proxies, heel/toe points
+   and joint positions are rebuilt from the reshaped mesh.
+4. **Report** (dashboard preview overlay): each measurement with source and confidence.
+   *observed*: segment lengths, front waist/hip widths. *model*: height, chest/waist/hip/thigh/calf/neck
+   circumferences, read off the fitted mesh; circumferences need a side view or depth camera to be measured.
+
+| Test (`tests/test_body_shape.py`, rendered synthetic people) | Result |
+|---|---|
+| Height, 3 random bodies | 0.2-1.9 cm (template 2.1-8.6 cm) |
+| Segment lengths | max 0.4-1.4 cm |
+| Front waist/hip widths | 0.6-1.9 cm with silhouette vs up to 4.3 cm lengths-only, 5.4 cm template |
+| 70 frames of arms up/down, bending, knee raises after calibration | max measurement change 0.00 cm |
+| Switch A (179 cm) -> B (167 cm) | 168.4 cm, no carry-over |
+| Pose gate | A-pose accepted; arms at sides, turned 50 deg, leaning 20 deg, arms raised rejected with the right message |
+
+Limits: left/right asymmetry is not modelled (SMPL-X shape space is symmetric); absolute size follows
+MediaPipe's metric estimate until the camera is calibrated or a height is entered; loose clothing widens
+the measured waist/hips beyond the allowance.
+
 ## Running
 
 1. `launch_dashboard.bat` -> Start.

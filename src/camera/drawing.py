@@ -187,6 +187,35 @@ def render_person_selection(frame: np.ndarray, selection: Dict[str, Any]) -> np.
     return out
 
 
+def render_body_calibration(frame: np.ndarray, cal: Dict[str, Any], measurements: List[dict]) -> np.ndarray:
+    """Calibration guidance (what the person should do) or, once calibrated, the key measurements
+    with their source: 'obs' = measured on the person, 'model' = inferred from the fitted body."""
+    if not cal:
+        return frame
+    h, w = frame.shape[:2]
+    if cal.get("state") != "CALIBRATED":
+        msg = cal.get("message", "")
+        if msg:
+            cv2.rectangle(frame, (0, h - 30), (w, h), (20, 90, 160), -1)
+            cv2.putText(frame, msg, (8, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
+        return frame
+    keep = ("height", "shoulder width (joint to joint)", "chest width (front)", "waist width (front)",
+            "hips width (front)", "chest circumference", "waist circumference", "hips circumference")
+    rows = [m for m in measurements if m["name"] in keep]
+    if not rows:
+        return frame
+    box_h = 16 * len(rows) + 8
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, h - box_h), (300, h), (25, 25, 30), -1)
+    frame = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
+    for i, m in enumerate(rows):
+        src = "obs" if m["source"] == "observed" else "model"
+        txt = f"{m['name'][:26]:26s} {m['cm']:6.1f} cm  {src} {m['confidence']:.1f}"
+        cv2.putText(frame, txt, (6, h - box_h + 18 + 16 * i), cv2.FONT_HERSHEY_PLAIN, 0.85,
+                    (200, 230, 200) if src == "obs" else (200, 200, 255), 1)
+    return frame
+
+
 def render_3d_orthographic_view(
     vertices: np.ndarray,
     view_angle: str = "front",
