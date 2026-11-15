@@ -29,7 +29,8 @@ if not IN_BLENDER:
     bp = clamp_body_pose(rng.uniform(-0.6, 0.6, 63), lims)[0]
     pose = {"global_orient": rng.uniform(-0.6, 0.6, 3).tolist(), "body_pose": bp.tolist(),
             "left_hand_pose": rng.uniform(-0.4, 0.4, 45).tolist(),
-            "right_hand_pose": rng.uniform(-0.4, 0.4, 45).tolist(), "betas": [0.0] * 10}
+            "right_hand_pose": rng.uniform(-0.4, 0.4, 45).tolist(),
+            "betas": rng.normal(0, 1.0, 10).round(3).tolist()}   # non-template body: Blender must reshape
     with torch.no_grad():
         out = layer(**{k: torch.tensor(v, dtype=torch.float32)[None] for k, v in pose.items()})
     bad = np.zeros(63, np.float32)
@@ -107,9 +108,9 @@ ev = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
 inv = arm.matrix_world.inverted()
 got = np.array([(inv @ (ev.matrix_world @ v.co))[:] for v in ev.data.vertices])
 err = np.linalg.norm(got - np.array(ref["verts"]), axis=1)
-print(f"[mesh] {len(got)} verts vs full SMPL-X (with pose correctives): mean {err.mean() * 1000:.2f} mm, max {err.max() * 1000:.2f} mm")
+print(f"[mesh] {len(got)} verts vs full SMPL-X (shaped body + pose correctives): mean {err.mean() * 1000:.2f} mm, max {err.max() * 1000:.2f} mm")
 assert err.max() < 0.002
-results.append(f"mesh == SMPL-X incl. correctives (max {err.max() * 1000:.2f} mm)")
+results.append(f"mesh == SMPL-X incl. body shape + correctives (max {err.max() * 1000:.2f} mm)")
 
 loc = tuple(round(x, 4) for x in arm.location)
 lens_ok = abs(cam.data.lens - 600 * 36 / 640) < 1e-4 and abs(cam.data.shift_x - (320 - 330) / 640) < 1e-6

@@ -269,6 +269,21 @@ class UnifiedTracker:
             }
         }
 
+    def reset_person(self):
+        """A different person was selected: drop smoothing state and the image-space lock."""
+        for f in (self.pose_filter, self.world_filter):
+            if f is not None:
+                f.reset()
+        self.hand_filters.clear()
+        self._track_center = None
+
+    @staticmethod
+    def empty_result(ts: float) -> Dict[str, Any]:
+        """Same shape as process() with nothing detected (pose estimation skipped)."""
+        return {"timestamp": ts, "body_points": [], "world_points": [], "hands": {}, "hands_world": {},
+                "face": [], "face_matrix": None, "blendshapes": {},
+                "latencies": {"pose_ms": 0.0, "hand_ms": 0.0, "face_ms": 0.0, "total_ms": 0.0}}
+
     # ---------------- person lock ----------------
     @staticmethod
     def _torso(lms) -> Tuple[np.ndarray, float]:

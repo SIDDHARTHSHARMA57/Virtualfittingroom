@@ -1,0 +1,33 @@
+{
+  "_doc": [
+    "Starting fabric profiles for the XPBD garment solver (src/garments/cloth_sim.py).",
+    "Keys override DEFAULT_FABRIC there. stretch/bend_compliance: higher = softer. mass: kg/m^2.",
+    "These are category defaults, not measured material properties; calibrate per garment in the",
+    "library editor. A mesh alone cannot reveal what a fabric is made of.",
+    "ease_m per fit style: minimum distance the fitted garment keeps from the skin."
+  ],
+  "fit_styles": {"tight": 0.004, "regular": 0.012, "loose": 0.025, "oversized": 0.045},
+  "profiles": {
+    "cotton_jersey": {"mass": 0.15, "stretch_compliance": 2e-6, "bend_compliance": 3e-3, "damping": 1.0,
+                      "air_drag": 0.02, "friction": 0.3, "thickness": 0.003},
+    "denim":         {"mass": 0.40, "stretch_compliance": 2e-7, "bend_compliance": 2e-4, "damping": 1.5,
+                      "air_drag": 0.01, "friction": 0.5, "thickness": 0.005},
+    "fleece":        {"mass": 0.30, "stretch_compliance": 1e-6, "bend_compliance": 8e-4, "damping": 1.2,
+                      "air_drag": 0.02, "friction": 0.4, "thickness": 0.006},
+    "light_woven":   {"mass": 0.08, "stretch_compliance": 5e-7, "bend_compliance": 8e-3, "damping": 0.6,
+                      "air_drag": 0.04, "friction": 0.25, "thickness": 0.002},
+    "jacket_shell":  {"mass": 0.35, "stretch_compliance": 1e-7, "bend_compliance": 4e-4, "damping": 1.5,
+                      "air_drag": 0.02, "friction": 0.4, "thickness": 0.006}
+  },
+  "category_defaults": {
+    "tshirt": "cotton_jersey", "polo": "cotton_jersey", "shirt": "light_woven", "hoodie": "fleece",
+    "sweatshirt": "fleece", "sweater": "fleece", "jacket": "jacket_shell",
+    "jeans": "denim", "trousers": "light_woven", "shorts": "light_woven", "skirt": "light_woven",
+    "dress": "light_woven", "jumpsuit": "light_woven"
+  },
+  "regions": {
+    "upper": ["tshirt", "polo", "shirt", "hoodie", "sweatshirt", "sweater", "jacket"],
+    "lower": ["jeans", "trousers", "shorts", "skirt"],
+    "full":  ["dress", "jumpsuit"]
+  }
+}

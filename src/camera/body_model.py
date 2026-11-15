@@ -26,7 +26,7 @@ AXIS = {"X": 0, "Y": 1, "Z": 2}
 
 
 def load_config(path: str = CONFIG_PATH) -> dict:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8-sig") as f:  # tolerate a BOM (Windows editors add one)
         return json.load(f)
 
 

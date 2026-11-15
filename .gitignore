@@ -17,3 +17,5 @@ __pycache__/
 *.pyc
 models/
 .venv/
+# clothing library: uploads + processed garments (binary, per installation; recreate test garments with scripts/seed_garments.py)
+assets/garments/

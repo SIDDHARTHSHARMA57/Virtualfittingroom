@@ -35,7 +35,7 @@ HOST = os.environ.get("VFR_BIND", "127.0.0.1")
 PORT = int(os.environ.get("VFR_PORT", "8766"))
 KEY = "VFR_SMPLX_RECEIVER"
 NAME = "SMPLX_Twin"
-VERSION = 2            # bump when the scene layout changes; older twins are rebuilt
+VERSION = 3            # bump when the scene layout changes; older twins are rebuilt
 BG_DISTANCE = 12.0     # m behind the camera's near plane; must be farther than the person
 DEFAULT_TRANSL = (0.0, 0.0, 2.5)   # camera frame (x right, y down, z forward) until tracking says otherwise
 
@@ -224,7 +224,10 @@ def _build_twin(scene):
     body.modifiers.new("Armature", "ARMATURE").object = arm
 
     # SMPL-X pose correctives as a shape key (evaluated before the armature, like SMPL-X itself)
+    # Basis stays the TEMPLATE body; the customer's shape is its own key, so garments can be bound
+    # against the template (mute VFR_BodyShape) and then follow the personalised body.
     body.shape_key_add(name="Basis", from_mix=False)
+    body.shape_key_add(name="VFR_BodyShape", from_mix=False).value = 1.0
     sk = body.shape_key_add(name="VFR_PoseCorrectives", from_mix=False)
     sk.value = 1.0
 
@@ -275,7 +278,10 @@ class Correctives:
             cols = np.nonzero(np.abs(rows).max(axis=0) > 1e-5)[0]
             if len(cols):
                 self.hands.append((j, cols, np.ascontiguousarray(rows[:, cols])))
-        self.base = d["v_template"].astype(np.float32).ravel()
+        self.v_template = d["v_template"].astype(np.float64)
+        self.shapedirs = d["shapedirs"][:, :, :10].astype(np.float64)        # (V, 3, 10)
+        self.J_regressor = d["J_regressor"].astype(np.float64)
+        self.base = self.v_template.astype(np.float32).ravel()
         self.key = body.data.shape_keys.key_blocks["VFR_PoseCorrectives"]
         self._lock = threading.Lock()
         self._job = None      # latest rvecs waiting to be computed
@@ -325,6 +331,11 @@ class Correctives:
         self._alive = False
         self._wake.set()
 
+    def shaped(self, betas):
+        """Rest vertices and joints for SMPL-X shape coefficients."""
+        v = self.v_template + self.shapedirs @ np.asarray(betas, dtype=np.float64)
+        return v, self.J_regressor @ v
+
     @staticmethod
     def rotmats(rvecs: np.ndarray) -> np.ndarray:
         th = np.linalg.norm(rvecs, axis=1, keepdims=True)
@@ -339,6 +350,36 @@ class Correctives:
         """Synchronous version (tests / one-off)."""
         self.key.data.foreach_set("co", self.base + self.offsets(rvecs_54))
         self.key.id_data.update_tag()
+
+
+def apply_shape(arm, body, betas, corr: "Correctives"):
+    """Reshape the twin to the estimated body: base mesh + shape-key basis, corrective base, and
+    bone rest positions (edit mode, briefly). Called only when the shape actually changes."""
+    v, J = corr.shaped(betas)
+    # relative shape key on the template Basis (pose correctives stay relative to the template too:
+    # SMPL-X pose blend shapes do not depend on the shape)
+    body.data.shape_keys.key_blocks["VFR_BodyShape"].data.foreach_set("co", v.astype(np.float32).ravel())
+    _set_object_mode()
+    prev_active = bpy.context.view_layer.objects.active
+    for o in bpy.context.view_layer.objects:
+        if o is not None:
+            o.select_set(False)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    try:
+        for i, name in enumerate(JOINT_NAMES):
+            eb = arm.data.edit_bones[name]
+            eb.head = J[i].tolist()
+            eb.tail = (J[i] + [0.0, 0.03, 0.0]).tolist()
+            eb.roll = 0.0
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")
+    arm.select_set(False)
+    bpy.context.view_layer.objects.active = prev_active
+    arm["vfr_betas"] = [float(x) for x in betas]
+    body.data.update()
+    _log(f"[VFR] Twin reshaped to betas {np.round(betas, 2).tolist()}")
 
 
 def _quat(rv) -> Quaternion:
@@ -495,6 +536,12 @@ def start():
              "correctives": Correctives(bpy.data.objects[NAME]), "feed": CameraFeed(),
              "tick_ms": 0.0, "penetrations": {}}
     bpy.app.driver_namespace[KEY] = state
+    try:  # clothing library + garment simulation + Mirror Mode (3D View sidebar > VTryOn)
+        from src.garments import blender_wardrobe
+        state["wardrobe"] = blender_wardrobe.register(JOINT_NAMES)
+    except Exception as exc:
+        state["wardrobe"] = None
+        _log(f"[VFR] Wardrobe unavailable: {exc}")
 
     def tick():
         s = bpy.app.driver_namespace.get(KEY)
@@ -545,6 +592,15 @@ def start():
                 s["last_error"] = str(exc)
         if latest is not None:
             rig = bpy.data.objects.get(s["rig"])
+            b = latest.get("betas")
+            if rig is not None and isinstance(b, list) and len(b) == 10 and all(math.isfinite(x) for x in b):
+                cur = np.array(rig.get("vfr_betas", [0.0] * 10), dtype=np.float64)
+                if np.abs(np.array(b) - cur).max() > 0.05:
+                    try:
+                        apply_shape(rig, bpy.data.objects[NAME], b, s["correctives"])
+                    except Exception as exc:
+                        s["last_error"] = f"reshape: {exc}"
+                        _log(f"[VFR] reshape failed: {exc}")
             if rig is not None and apply_pose(rig, latest, s["correctives"]):
                 s["applied"] += 1
                 s["penetrations"] = latest.get("penetrations", {})
@@ -554,6 +610,11 @@ def start():
                 changed = True
         if s["correctives"].flush():
             changed = True
+        if s.get("wardrobe") is not None:
+            try:
+                changed |= s["wardrobe"].tick()
+            except Exception as exc:  # a garment problem must never stop body tracking
+                s["last_error"] = f"wardrobe: {exc}"
         if changed:
             _redraw()
         s["tick_ms"] = 0.9 * s["tick_ms"] + 0.1 * (time.perf_counter() - t0) * 1000

@@ -127,4 +127,27 @@ print(f"[stability] hand-into-abdomen sweep: max penetration {max(pens) * 100:.2
 assert max(pens) <= TOL + 1e-4 and max(deltas) < 15.0
 results.append("hand-into-abdomen sweep: stays outside, smooth")
 
+# 5. Head orientation from the face landmarker (nod + tilt + turn); eyes/ears alone barely see nods
+bp = np.zeros(63, np.float32)
+bp[sl("left_shoulder")], bp[sl("right_shoulder")] = [0, 0, -1.2], [0, 0, 1.2]
+bp[sl("neck")] = [0.30, 0.25, 0.15]
+bp[sl("head")] = [0.25, 0.20, 0.10]
+with torch.no_grad():
+    _, Rg, _ = eng._fk_keypoints(torch.zeros(1, 3), torch.tensor(bp)[None], return_rot=True)
+R_true = Rg[eng._pos_of[15]].numpy()
+face_M = np.eye(4)
+face_M[:3, :3] = R_true
+errs = {}
+for src, fm in (("pose only", None), ("with face matrix", face_M.tolist())):
+    eng.reset()
+    for _ in range(4):
+        eng.update_from_world_landmarks(landmarks_for(bp), face_matrix=fm)
+    with torch.no_grad():
+        _, Rf, _ = eng._fk_keypoints(eng.global_orient, eng.body_pose, return_rot=True)
+    Rrel = Rf[eng._pos_of[15]].numpy() @ R_true.T
+    errs[src] = float(np.degrees(np.arccos(np.clip((np.trace(Rrel) - 1) / 2, -1, 1))))
+print(f"[head] nod+tilt+turn head error: pose only {errs['pose only']:.1f} deg, with face matrix {errs['with face matrix']:.1f} deg (source {eng.head_source})")
+assert errs["with face matrix"] < 5.0 and eng.head_source == "face"
+results.append(f"head orientation: {errs['pose only']:.1f} deg -> {errs['with face matrix']:.1f} deg with face matrix")
+
 print("\n".join(["ANATOMY OK:"] + ["  - " + r for r in results]))
