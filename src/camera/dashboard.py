@@ -315,12 +315,15 @@ class CameraDashboardApp:
         time.sleep(0.3)
         self.action_start()
 
-    @staticmethod
-    def _find_blender():
-        """BLENDER env var, PATH, the team's E:\\Apps\\Blender, then Program Files."""
-        cands = [os.environ.get("BLENDER"), shutil.which("blender"), r"E:\Apps\Blender\blender.exe"]
+    def _find_blender(self):
+        """BLENDER env var, PATH, custom path, the team's E:\\Apps\\Blender, then Program Files."""
+        cands = [os.environ.get("BLENDER"), shutil.which("blender")]
+        custom_path = "/media/siddharth-sharam/Workspace/Office files/blender-5.2.2-linux-x64/blender"
+        if os.path.isfile(custom_path):
+            cands.insert(0, custom_path)
+        cands += [r"E:\Apps\Blender\blender.exe"]
         cands += sorted(glob.glob(os.path.join(os.environ.get("ProgramFiles", ""), "Blender Foundation",
-                                               "Blender*", "blender.exe")), reverse=True)
+                                                "Blender*", "blender.exe")), reverse=True)
         return next((c for c in cands if c and os.path.isfile(c)), None)
 
     def action_open_twin(self):
